@@ -1,32 +1,45 @@
-# Python
+
+# Python cache files
 __pycache__/
 *.py[cod]
-*.pyd
+*$py.class
 
-# Virtual environment
+# Virtual environments
 .venv/
 venv/
+env/
 
-# Environment variables
+# Environment variables and secrets
 .env
 .env.*
-
 !.env.example
 
-# Jupyter
+# Jupyter Notebook
 .ipynb_checkpoints/
 
-# Data
+# Data files
 data/raw/*
 data/interim/*
 data/processed/*
 
+# Preserve directory structure
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+
 # Model artifacts
 artifacts/models/*
+!artifacts/models/.gitkeep
 
-# Logs
-logs/
-*.log
+# Test and coverage files
+.pytest_cache/
+.coverage
+htmlcov/
 
-# IDE
+# IDE settings
 .vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
