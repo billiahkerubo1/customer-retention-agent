@@ -1,0 +1,31 @@
+{
+    "model_name": "XGBoost",
+    "threshold": 0.35,
+    "target": "Churn",
+    "positive_class": 1,
+    "negative_class": 0,
+    "features": [
+        "gender",
+        "SeniorCitizen",
+        "Partner",
+        "Dependents",
+        "tenure",
+        "PhoneService",
+        "MultipleLines",
+        "InternetService",
+        "OnlineSecurity",
+        "OnlineBackup",
+        "DeviceProtection",
+        "TechSupport",
+        "StreamingTV",
+        "StreamingMovies",
+        "Contract",
+        "PaperlessBilling",
+        "PaymentMethod",
+        "MonthlyCharges",
+        "TotalCharges",
+        "tenure_group",
+        "average_monthly_spend",
+        "service_count"
+    ]
+}

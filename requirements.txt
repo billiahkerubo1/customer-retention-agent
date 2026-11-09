@@ -9,3 +9,9 @@ ipykernel
 openpyxl
 pytest
 python-dotenv
+shap
+joblib
+fastapi
+uvicorn
+google-genai
+python-dotenv
