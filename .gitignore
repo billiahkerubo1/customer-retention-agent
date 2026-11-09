@@ -6,6 +6,16 @@ __pycache__/
 
 # Virtual environments
 .venv/
+# Virtual environments
+.venv/
+.venv-1/
+venv/
+env/
+
+# Environment variables
+.env
+.env.*
+!.env.example
 .venv-1/
 venv/
 env/
