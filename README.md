@@ -1,4 +1,4 @@
-# CUSTOMER RETENTION AGENTS
+# CUSTOMER RETENTION AGENT
 
 An AI-powered customer retention system that combines machine learning, explainable AI, retrieval-augmented generation (RAG), and agentic tool orchestration to support proactive customer retention decisions.
 
