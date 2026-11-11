@@ -68,7 +68,10 @@ if not API_KEY:
 
 
 MODEL_NAME = "gemini-flash-latest"
+
+# Total attempts, including the first request.
 MAX_RETRIES = 2
+
 MAX_TOOL_ROUNDS = 5
 GEMINI_TIMEOUT_MS = 240_000
 
@@ -85,6 +88,17 @@ class GeminiTimeoutError(Exception):
 
 class GeminiRequestError(Exception):
     """Raised when a Gemini request fails after the allowed attempts."""
+
+    def __init__(
+        self,
+        message,
+        status_code=None,
+        original_message=None,
+    ):
+        super().__init__(message)
+
+        self.status_code = status_code
+        self.original_message = original_message
 
 
 client = genai.Client(
@@ -346,6 +360,46 @@ what is inferred, and what still needs to be confirmed.
 
 
 # ---------------------------------------------------------
+# Gemini error utilities
+# ---------------------------------------------------------
+
+def get_error_details(error):
+    """
+    Extract useful diagnostic information from a Gemini SDK exception.
+
+    Does not log request headers, API keys, or customer information.
+    """
+
+    status_code = getattr(error, "code", None)
+
+    error_message = (
+        getattr(error, "message", None)
+        or str(error)
+        or type(error).__name__
+    )
+
+    error_message = str(error_message)[:500]
+
+    return status_code, error_message
+
+
+def wait_before_retry(attempt_number):
+    """Apply exponential backoff before the next Gemini request."""
+
+    wait_time = 2 ** attempt_number
+
+    log_event(
+        "warning",
+        "Retrying Gemini request | next_attempt=%s/%s | wait=%s seconds",
+        attempt_number + 1,
+        MAX_RETRIES,
+        wait_time,
+    )
+
+    time.sleep(wait_time)
+
+
+# ---------------------------------------------------------
 # Gemini request with retry and timeout handling
 # ---------------------------------------------------------
 
@@ -353,9 +407,15 @@ def generate_response(conversation):
     """
     Send the current conversation to Gemini.
 
-    Retryable server errors and HTTP timeouts are handled here.
-    The SDK itself is configured for one attempt so retries are controlled
-    by this function.
+    Handles:
+    - Retryable Gemini server errors.
+    - Retryable Gemini client errors.
+    - HTTP timeouts.
+    - API quota and rate-limit errors.
+    - Unexpected exceptions.
+
+    The SDK is configured for one attempt so this function controls
+    the application-level retry behaviour.
     """
 
     for attempt in range(MAX_RETRIES):
@@ -395,18 +455,59 @@ def generate_response(conversation):
 
             return response
 
+        except errors.ServerError as error:
+
+            elapsed = time.perf_counter() - request_start
+            status_code, error_message = get_error_details(error)
+
+            log_event(
+                "error",
+                "Gemini server error | "
+                "status_code=%s | attempt=%s/%s | "
+                "duration=%.2f seconds | error=%s",
+                status_code,
+                attempt_number,
+                MAX_RETRIES,
+                elapsed,
+                error_message,
+            )
+
+            if (
+                status_code not in RETRYABLE_SERVER_ERRORS
+                and status_code is not None
+            ):
+                raise GeminiRequestError(
+                    "Gemini returned a non-retryable server error. "
+                    f"HTTP status: {status_code}. "
+                    f"Details: {error_message}",
+                    status_code=status_code,
+                    original_message=error_message,
+                ) from error
+
+            if attempt == MAX_RETRIES - 1:
+
+                raise GeminiRequestError(
+                    "Gemini server request failed after the allowed retries. "
+                    f"HTTP status: {status_code}. "
+                    f"Details: {error_message}",
+                    status_code=status_code,
+                    original_message=error_message,
+                ) from error
+
         except errors.ClientError as error:
 
             elapsed = time.perf_counter() - request_start
-            status_code = getattr(error, "code", None)
+            status_code, error_message = get_error_details(error)
 
             if status_code == 429:
 
                 log_event(
                     "error",
                     "Gemini quota or rate limit exceeded | "
-                    "duration=%.2f seconds",
+                    "status_code=%s | duration=%.2f seconds | error=%s",
+                    status_code,
                     elapsed,
+                    error_message,
                 )
 
                 raise GeminiQuotaExceededError(
@@ -419,9 +520,10 @@ def generate_response(conversation):
                 log_event(
                     "exception",
                     "Non-retryable Gemini client error | "
-                    "status_code=%s | duration=%.2f seconds",
+                    "status_code=%s | duration=%.2f seconds | error=%s",
                     status_code,
                     elapsed,
+                    error_message,
                 )
 
                 raise
@@ -429,53 +531,45 @@ def generate_response(conversation):
             log_event(
                 "warning",
                 "Retryable Gemini client error | "
-                "status_code=%s | attempt=%s/%s | duration=%.2f seconds",
+                "status_code=%s | attempt=%s/%s | "
+                "duration=%.2f seconds | error=%s",
                 status_code,
                 attempt_number,
                 MAX_RETRIES,
                 elapsed,
+                error_message,
             )
 
             if attempt == MAX_RETRIES - 1:
+
                 raise GeminiRequestError(
-                    "Gemini request failed after the allowed retries."
-                ) from error
-
-        except errors.ServerError as error:
-
-            elapsed = time.perf_counter() - request_start
-            status_code = getattr(error, "code", None)
-
-            log_event(
-                "error",
-                "Gemini server error | "
-                "status_code=%s | attempt=%s/%s | duration=%.2f seconds",
-                status_code,
-                attempt_number,
-                MAX_RETRIES,
-                elapsed,
-            )
-
-            if attempt == MAX_RETRIES - 1:
-                raise GeminiRequestError(
-                    "Gemini server request failed after the allowed retries."
+                    "Gemini request failed after the allowed retries. "
+                    f"HTTP status: {status_code}. "
+                    f"Details: {error_message}",
+                    status_code=status_code,
+                    original_message=error_message,
                 ) from error
 
         except httpx.TimeoutException as error:
 
             elapsed = time.perf_counter() - request_start
 
+            error_message = str(error) or type(error).__name__
+
             log_event(
                 "error",
                 "Gemini HTTP timeout | "
-                "attempt=%s/%s | duration=%.2f seconds | error_type=%s",
+                "attempt=%s/%s | duration=%.2f seconds | "
+                "error_type=%s | error=%s",
                 attempt_number,
                 MAX_RETRIES,
                 elapsed,
                 type(error).__name__,
+                error_message[:500],
             )
 
             if attempt == MAX_RETRIES - 1:
+
                 raise GeminiTimeoutError(
                     "Gemini did not respond within the configured "
                     "240-second timeout. Please try again later."
@@ -497,16 +591,7 @@ def generate_response(conversation):
             raise
 
         if attempt < MAX_RETRIES - 1:
-
-            wait_time = 2 ** (attempt + 1)
-
-            log_event(
-                "warning",
-                "Retrying Gemini request | wait=%s seconds",
-                wait_time,
-            )
-
-            time.sleep(wait_time)
+            wait_before_retry(attempt_number)
 
     raise GeminiRequestError(
         "Gemini request failed after the allowed retries."
@@ -793,6 +878,12 @@ if __name__ == "__main__":
         except GeminiRequestError as error:
 
             print(f"\nGemini request failed: {error}")
+
+            if error.status_code is not None:
+                print(f"HTTP status: {error.status_code}")
+
+            if error.original_message:
+                print(f"Original Gemini error: {error.original_message}")
 
         except errors.ClientError:
 
