@@ -413,9 +413,6 @@ The AWS infrastructure preparation currently includes:
 - A build specification for building and pushing the Docker image.
 - An IAM service role with ECR push permissions.
 
-The first cloud build is pending resolution of an AWS CodeBuild account queue restriction. The image has not yet been confirmed as uploaded to ECR, and the application has not yet been deployed to ECS.
-
-The current container deployment target is the FastAPI prediction service, not the complete Gemini retention agent.
 
 ## 11. Engineering and Responsible AI Considerations
 
