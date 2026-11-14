@@ -385,7 +385,7 @@ The container is configured to start the FastAPI application using Uvicorn.
 
 ### Deployment architecture
 
-The intended deployment workflow is:
+The deployment workflow is:
 
 ```text
 GitHub Repository
@@ -406,7 +406,7 @@ Amazon ECS / AWS Fargate
 FastAPI Prediction Service
 ```
 
-The AWS infrastructure preparation currently includes:
+The AWS infrastructure preparation includes:
 
 - An Amazon ECR repository.
 - A CodeBuild project connected to GitHub.
